@@ -1,6 +1,10 @@
+#include <stdlib.h>
 #include <hidapi.h>
 #include <cstdio>
 #include <ctime>
+
+#define ERR_NO_SENSOR 6
+#define ERR_SENSOR_NOT_AVAIL 7
 
 int main(int argc, char **argv) {
     
@@ -13,22 +17,27 @@ int main(int argc, char **argv) {
     const int MAX_STR = 255;
     wchar_t wstr[MAX_STR];
     
-    printf("Device Info:\n");
     int res = hid_get_manufacturer_string(handle, wstr, MAX_STR);
     if (res == -1) {
         fprintf(stderr, "Could not get manufacturer string!\n");
         return 2;
     }
-    printf("\tManufacturer String: %ls\n", wstr);
     
     res = hid_get_product_string(handle, wstr, MAX_STR);
     if (res == -1) {
         fprintf(stderr, "Could not get product string!\n");
         return 3;
     }
-    printf("\tProduct String: %ls\n", wstr);
-    
+
+    if( argc < 2 ) {
+        fprintf(stderr, "No Sensor specified.\n");
+        return ERR_NO_SENSOR;
+    }
+
+    unsigned int sensor_req = atoi(argv[1]);
+
     unsigned char buf[65];
+
     for (;;) {
         int num = hid_read(handle, buf, 64);
         if (num < 0) {
@@ -36,13 +45,20 @@ int main(int argc, char **argv) {
             return 4;
         }
         if (num == 64) {
-            time_t now;
-            time(&now);
-            tm loctm;
-            localtime_r(&now, &loctm);
-            
+            unsigned int sensor_all = (unsigned int)buf[0];
+            unsigned int sensor_cur = (unsigned int)buf[1];
+
             short temp = *(short *)&buf[4]; //holy fuck!
-            printf("<%02d:%02d:%02d> sensor: %d of %d, temp: %+.1f°\n", loctm.tm_hour, loctm.tm_min, loctm.tm_sec, buf[1], buf[0], (float)temp/10.0f);
+
+            if (sensor_req > sensor_all){
+                fprintf(stderr, "Requested sensor is not available!\n");
+                return ERR_SENSOR_NOT_AVAIL;
+            }
+
+            if (sensor_req == sensor_cur){
+                printf("%d %+.1f\n", sensor_cur, (float)temp/10.0f);
+                break;
+            }
         }
     }
     return 0;
